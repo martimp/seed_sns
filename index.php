@@ -46,6 +46,43 @@ if (!empty($_POST)) {
   }
 
 }
+// ページング機能
+// 空の変数を用意
+$page = '';
+
+// パラメータが存在していたらページ番号を代入
+if (isset($_GET['page'])) {
+  $page = $_GET['page'];
+} else{
+  $page = 1;
+}
+
+// 1以下のイレギュラーな数字が入ってきた時、ページ番号を強制的に1とする
+// max カンマ区切りで羅列された数字の中から最大の数字を取得する
+$page = max($page,1);
+
+// 1ページ分の表示件数を指定
+$page_number = 5;
+
+// データの件数から最大ページを計算する
+$page_sql = 'SELECT COUNT(*) AS `page_count` FROM `tweets` WHERE `delete_flag`=0;';
+$page_stmt = $dbh->prepare($page_sql);
+$page_stmt->execute();
+
+// 全件取得(論理削除されていないもの)
+$page_count = $page_stmt->fetch(PDO::FETCH_ASSOC);
+
+// ceil 小数点切り上げ
+$all_page_number = ceil($page_count['page_count'] / $page_number);
+
+// パラメータのページ番号が最大ページを超えていれば、強制的に最後のページとする
+// min カンマ区切りで羅列された数字の中から最小の数字を取得する
+$page = min($page, $all_page_number);
+
+// 表示するデータの取得開始場所
+$start = ($page -1) * $page_number;
+
+
 
 // 一覧用の投稿全件取得
 // テーブル結合
@@ -53,7 +90,10 @@ if (!empty($_POST)) {
 // INNER join = 両方のテーブルに存在するデータのみ取得
 // OUTER join(left join と right join) = 複数のテーブルがあり、それらを結合する際に優先テーブルを一つ決め、そこにある情報は全て表示しながら、他のテーブルの情報に対になるデータがあれば表示する。
 // 優先テーブルに指定されると、そのテーブルの情婦は全て表示される
-$tweet_sql = 'SELECT * FROM `tweets` LEFT JOIN `members` ON `tweets`.`member_id`=`members`.`member_id` WHERE `delete_flag`=0 ORDER BY `tweets`.`created` DESC';
+// LIMIT = テーブルから取得する範囲を指定
+// LIMIT 取得する配列のキー,取得する数
+
+$tweet_sql = "SELECT `tweets`.*,`members`.`nick_name`,`members`.`picture_path` FROM `tweets` LEFT JOIN `members` ON `tweets`.`member_id`=`members`.`member_id` WHERE `delete_flag`=0 ORDER BY `tweets`.`created` DESC LIMIT ".$start.",".$page_number;
 $tweet_stmt = $dbh->prepare($tweet_sql);
 $tweet_stmt->execute();
 
@@ -70,7 +110,9 @@ $tweet_stmt->execute();
     $tweet_list[] = $tweet;
   }
 
-//   
+  // var_dump($tweet_list);
+
+// 
 
   ?>
 
@@ -135,9 +177,21 @@ $tweet_stmt->execute();
             <ul class="paging">
               <input type="submit" class="btn btn-info" value="つぶやく">
               &nbsp;&nbsp;&nbsp;&nbsp;
-              <li><a href="index.html" class="btn btn-default">前</a></li>
+              <!-- 最初のページの時、前のボタンを押せないようにする -->
+              <?php if ($page == 1) { ?>
+              <li>前</li>
+              <?php } else { ?>
+              <li><a href="index.php?page=<?php echo $page -1; ?>" class="btn btn-default">前</a></li>
+              <?php } ?>
               &nbsp;&nbsp;|&nbsp;&nbsp;
-              <li><a href="index.html" class="btn btn-default">次</a></li>
+              <!-- 最後のページの時、次のボタンを押せないようにする -->
+              <?php if ($page == $all_page_number) { ?>
+              <li>次</li>
+              <?php } else { ?>
+              <li><a href="index.php?page=<?php echo $page +1; ?>" class="btn btn-default"></a></li>
+              <?php } ?>
+              <!-- 現在のページ / 最大のページ -->
+              <li><?php echo $page; ?> / <?php echo $all_page_number; ?></li>
             </ul>
           </form>
         </div>
@@ -146,17 +200,24 @@ $tweet_stmt->execute();
           <?php foreach ($tweet_list as $unko) { 
            ?>
            <div class="msg">
-            <img src="<?php echo "picture_path/".$login_user['picture_path']; ?>" width="48" height="48">
+            <img src="<?php echo "picture_path/".$unko['picture_path']; ?>" width="48" height="48">
             <p>
-              <?php echo $unko['tweet']; ?><span class="name"> &nbsp;<?php echo $login_user['nick_name'] ?></span>
+              <?php echo $unko['tweet']; ?><span class="name"> &nbsp;<?php echo $unko['nick_name'] ?></span>
+              <?php if ($login_user['member_id'] !== $unko['member_id']) { ?>
               [<a href="#">Re</a>]
+              <?php } ?>
             </p>
             <p class="day">
               <a href="date.php">
                 <?php echo $unko['modified']; ?>
               </a>
+              
+              <?php if ($login_user['member_id'] == $unko['member_id']) { ?>
               [<a href="edit.php?tweet_id=<?php echo $unko['tweet_id']; ?>" style="color: #00994C;">編集</a>]
               [<a href="delete.php?tweet_id=<?php echo $unko['tweet_id']; ?>" style="color: #F33;">削除</a>]
+              <?php } ?>
+              [<a href="view.php?tweet_id=<?php echo $unko['tweet_id']; ?>" style="color: #000000;">詳細</a>]
+
             </p>
           </div>
           <?php } ?>
